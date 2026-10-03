@@ -1,4 +1,7 @@
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    time::Instant,
+};
 
 use anyhow::{Context, Result, bail};
 use iocraft::prelude::*;
@@ -57,7 +60,9 @@ pub async fn run_non_interactive(
             .map_err(|error| anyhow::anyhow!("Invalid --reasoning-effort: {error}"))?,
         None => support.with_preference(&preferences.thinking).reasoning_effort(),
     };
+    let setup_start = Instant::now();
     let session = create_session(&engine, &model, seed, true).await?;
+    let setup_duration = setup_start.elapsed();
     let mut messages = Vec::new();
     if let Some(effort) = effort {
         messages.push(ChatMessage::system().with_reasoning_effort(effort));
@@ -95,6 +100,7 @@ pub async fn run_non_interactive(
         chat_transcript_component(
             Vec::new(),
             Some(stats),
+            Some(setup_duration),
             theme.subtitle_color,
             theme.overlay_color(),
             theme.padding(),

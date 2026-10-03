@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use shoji::types::session::chat::ChatReplyStats;
 
 use super::*;
@@ -17,6 +19,7 @@ fn completed_transcript_renders_without_a_terminal_or_ansi_sequences() {
             duration: 1.25,
             ..Default::default()
         }),
+        Some(Duration::from_millis(500)),
         theme.subtitle_color,
         theme.overlay_color(),
         theme.padding(),
@@ -27,6 +30,7 @@ fn completed_transcript_renders_without_a_terminal_or_ansi_sequences() {
     let output = String::from_utf8(output).unwrap();
     assert!(output.contains("Let me think"));
     assert!(output.contains("Hello, 世界!"));
+    assert!(output.contains("setup time: 0.50 s"));
     assert!(output.contains("duration: 1.25 s"));
     assert!(!output.contains("Do not echo this prompt"));
     assert!(!output.contains('\u{1b}'));

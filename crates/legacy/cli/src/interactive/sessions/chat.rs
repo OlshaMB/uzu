@@ -1,4 +1,7 @@
-use std::any::Any;
+use std::{
+    any::Any,
+    time::{Duration, Instant},
+};
 
 use chrono::Local;
 use iocraft::prelude::*;
@@ -31,6 +34,7 @@ pub struct ChatSessionState {
     session: Option<ChatSession>,
     pending_items: Vec<TranscriptItem>,
     pending_stats: Option<ChatReplyStats>,
+    setup_duration: Option<Duration>,
     cancel_token: Option<CancelToken>,
     status: ChatSessionStatus,
 }
@@ -41,16 +45,21 @@ impl ChatSessionState {
             session: None,
             pending_items: Vec::new(),
             pending_stats: None,
+            setup_duration: None,
             cancel_token: None,
             status: ChatSessionStatus::Loading,
         }
     }
 
-    pub fn idle(session: ChatSession) -> Self {
+    pub fn idle(
+        session: ChatSession,
+        setup_duration: Duration,
+    ) -> Self {
         Self {
             session: Some(session),
             pending_items: Vec::new(),
             pending_stats: None,
+            setup_duration: Some(setup_duration),
             cancel_token: None,
             status: ChatSessionStatus::Idle,
         }
@@ -94,6 +103,7 @@ impl SessionState for ChatSessionState {
         Some(HistoryCellType::ChatTranscript {
             items: self.pending_items.clone(),
             stats: self.pending_stats.clone(),
+            setup_duration: self.setup_duration,
         })
     }
 }
@@ -121,6 +131,7 @@ pub async fn ensure_session(
         let state = state.read();
         (state.engine.clone(), state.seed, state.no_tools)
     };
+    let setup_start = Instant::now();
     let session = match create_session(&engine, model, seed, no_tools).await {
         Ok(session) => session,
         Err(error) => {
@@ -135,12 +146,13 @@ pub async fn ensure_session(
         },
     };
 
+    let setup_duration = setup_start.elapsed();
     let sampling_defaults = session.sampling_defaults().await.unwrap_or_default();
     {
         let mut state = state.write();
         if let Some(model_state) = state.model_state.as_mut() {
             model_state.sampling_defaults = sampling_defaults;
-            model_state.session_state = Some(Box::new(ChatSessionState::idle(session.clone())));
+            model_state.session_state = Some(Box::new(ChatSessionState::idle(session.clone(), setup_duration)));
         }
     }
     Some(session)
@@ -255,16 +267,20 @@ pub async fn run_session(
 
     let final_items = build_transcript(&session.messages().await, history_offset);
     let mut state = state.write();
-    if let Some(chat_state) = chat_state_mut(&mut state) {
+    let setup_duration = if let Some(chat_state) = chat_state_mut(&mut state) {
         chat_state.pending_items = Vec::new();
         chat_state.pending_stats = None;
         chat_state.cancel_token = None;
         chat_state.status = ChatSessionStatus::Idle;
-    }
+        chat_state.setup_duration.take()
+    } else {
+        None
+    };
     if !final_items.is_empty() || latest_stats.is_some() {
         state.history.push(HistoryCellType::ChatTranscript {
             items: final_items,
             stats: latest_stats,
+            setup_duration,
         });
     }
 }

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use iocraft::prelude::*;
 use shoji::types::session::{
     chat::ChatReplyStats, classification::ClassificationOutput, text_to_speech::TextToSpeechStats,
@@ -32,6 +34,7 @@ pub enum HistoryCellType {
     ChatTranscript {
         items: Vec<TranscriptItem>,
         stats: Option<ChatReplyStats>,
+        setup_duration: Option<Duration>,
     },
     ClassificationOutput {
         output: ClassificationOutput,
@@ -97,9 +100,11 @@ pub fn HistoryCell(
         Some(HistoryCellType::ChatTranscript {
             items,
             stats,
+            setup_duration,
         }) => chat_transcript_component(
             items,
             stats,
+            setup_duration,
             theme.subtitle_color,
             theme.overlay_color(),
             theme.padding(),
@@ -119,6 +124,7 @@ pub fn HistoryCell(
 pub fn chat_transcript_component(
     items: Vec<TranscriptItem>,
     stats: Option<ChatReplyStats>,
+    setup_duration: Option<Duration>,
     subtitle_color: Color,
     overlay_color: Color,
     padding: u16,
@@ -173,7 +179,7 @@ pub fn chat_transcript_component(
                 }
                 .into(),
             }).collect::<Vec<AnyElement<'static>>>())
-            #(stats.as_ref().map(|stats| chat_reply_stats_component(stats, subtitle_color)))
+            #(stats.as_ref().map(|stats| chat_reply_stats_component(stats, setup_duration, subtitle_color)))
         }
     }
     .into()
@@ -290,8 +296,10 @@ fn classification_output_component(
 
 fn chat_reply_stats_component(
     stats: &ChatReplyStats,
+    setup_duration: Option<Duration>,
     subtitle_color: Color,
 ) -> AnyElement<'static> {
+    let setup_time = setup_duration.map(|duration| format!("{:.2} s", duration.as_secs_f64()));
     let time_to_first_token = stats
         .time_to_first_token
         .map(|duration| format!("{duration:.2} s"))
@@ -325,6 +333,12 @@ fn chat_reply_stats_component(
             width: 100pct,
             flex_direction: FlexDirection::Column,
         ) {
+            #(setup_time.map(|setup_time| element! {
+                Text(
+                    content: format!("setup time: {setup_time}"),
+                    color: subtitle_color,
+                )
+            }))
             Text(
                 content: format!("time to first token: {time_to_first_token}"),
                 color: subtitle_color,
